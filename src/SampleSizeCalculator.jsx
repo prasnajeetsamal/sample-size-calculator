@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { Calculator, Users, TrendingUp, Info, CheckCircle2, XCircle, AlertTriangle, Calendar, Settings, BarChart3, BookOpen, FlaskConical, Target, LineChart, Grid3x3 } from "lucide-react";
+import { Calculator, Users, TrendingUp, Info, CheckCircle2, XCircle, AlertTriangle, Calendar, Settings, BarChart3, BookOpen, FlaskConical, Target, LineChart, Grid3x3, Download } from "lucide-react";
+import * as XLSX from "xlsx";
 
 // ===== Helpers: Normal CDF inverse (Acklam approximation) =====
 function normSInv(p) {
@@ -725,6 +726,7 @@ function MultipleScenarios() {
             mde: mdeValue * 100,
             controlRate: pA * 100,
             variationRate: pB * 100,
+            numVariations: numVariations,
             nControl: dropoffRate > 0 ? nControlWithDropoff : nControl,
             nPerVariation: dropoffRate > 0 ? nPerVariationWithDropoff : nPerVariation,
             totalSample: finalTotal,
@@ -1026,15 +1028,57 @@ function MultipleScenarios() {
       {/* Results Table */}
       <SectionDivider icon={BarChart3} title={`Scenario Results (${scenarios.length} scenarios)`} />
 
+      {scenarios.length > 0 && (
+        <div className="mb-4 flex justify-end">
+          <button
+            onClick={() => {
+              // Prepare data for Excel
+              const excelData = scenarios.map(s => ({
+                'Significance Level (%)': s.alpha.toFixed(1),
+                'MDE (%)': s.mde.toFixed(1),
+                'Control Rate (%)': s.controlRate.toFixed(2),
+                'Variation Rate (%)': s.variationRate.toFixed(2),
+                'Number of Variations': s.numVariations,
+                'n (Control)': s.nControl,
+                'n (per Variation)': s.nPerVariation,
+                'Total Sample Size': s.totalSample,
+                'Duration (Days)': s.daysNeeded,
+                'Duration (Weeks)': s.weeksNeeded
+              }));
+
+              // Create workbook and worksheet
+              const ws = XLSX.utils.json_to_sheet(excelData);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Sample Size Scenarios");
+
+              // Set column widths
+              ws['!cols'] = [
+                { wch: 20 }, { wch: 10 }, { wch: 15 }, { wch: 17 }, 
+                { wch: 20 }, { wch: 12 }, { wch: 18 }, 
+                { wch: 18 }, { wch: 15 }, { wch: 16 }
+              ];
+
+              // Download
+              XLSX.writeFile(wb, "sample_size_scenarios.xlsx");
+            }}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-semibold hover:from-emerald-700 hover:to-teal-700 transition-all shadow-lg"
+          >
+            <Download size={18} />
+            Export to Excel
+          </button>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">α (%)</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">Significance Level</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">MDE (%)</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">Control</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">Variation</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide"># Variations</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">n (Control)</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">n (per Var)</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">Total Sample</th>
@@ -1043,21 +1087,53 @@ function MultipleScenarios() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {scenarios.map((scenario, idx) => (
-                <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{scenario.alpha.toFixed(1)}%</td>
-                  <td className="px-4 py-3 text-sm font-medium text-indigo-700">{scenario.mde.toFixed(1)}%</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{scenario.controlRate.toFixed(2)}%</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">{scenario.variationRate.toFixed(2)}%</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.nControl.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.nPerVariation.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-indigo-700">{scenario.totalSample.toLocaleString()}</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.daysNeeded}</td>
-                  <td className="px-4 py-3 text-sm text-right text-gray-700">{scenario.weeksNeeded}</td>
-                </tr>
-              ))}
+              {scenarios.map((scenario, idx) => {
+                // Color coding based on alpha level
+                let bgColor = "bg-white";
+                if (scenario.alpha <= 1) {
+                  bgColor = idx % 2 === 0 ? "bg-red-50" : "bg-red-100/50";
+                } else if (scenario.alpha <= 5) {
+                  bgColor = idx % 2 === 0 ? "bg-amber-50" : "bg-amber-100/50";
+                } else {
+                  bgColor = idx % 2 === 0 ? "bg-blue-50" : "bg-blue-100/50";
+                }
+
+                return (
+                  <tr key={idx} className={bgColor}>
+                    <td className="px-4 py-3 text-sm font-bold text-gray-900">{scenario.alpha.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-indigo-700">{scenario.mde.toFixed(1)}%</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{scenario.controlRate.toFixed(2)}%</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{scenario.variationRate.toFixed(2)}%</td>
+                    <td className="px-4 py-3 text-sm text-center font-medium text-gray-900">{scenario.numVariations}</td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.nControl.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.nPerVariation.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-right font-semibold text-indigo-700">{scenario.totalSample.toLocaleString()}</td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.daysNeeded}</td>
+                    <td className="px-4 py-3 text-sm text-right text-gray-700">{scenario.weeksNeeded}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+        </div>
+
+        {/* Color Legend */}
+        <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
+          <div className="flex items-center gap-6 text-xs">
+            <span className="font-semibold text-gray-700">Color Legend:</span>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-4 bg-red-50 border border-red-200 rounded"></div>
+              <span className="text-gray-600">α ≤ 1% (Very Conservative)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-4 bg-amber-50 border border-amber-200 rounded"></div>
+              <span className="text-gray-600">α ≤ 5% (Standard)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-4 bg-blue-50 border border-blue-200 rounded"></div>
+              <span className="text-gray-600">α > 5% (Liberal)</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1296,9 +1372,10 @@ export default function ExperimentationApp() {
   );
 }
 
+// ===================== Older Code ================
 
 // import React, { useMemo, useState } from "react";
-// import { Calculator, Users, TrendingUp, Info, CheckCircle2, XCircle, AlertTriangle, Calendar, Settings, BarChart3, BookOpen, FlaskConical, Target, LineChart } from "lucide-react";
+// import { Calculator, Users, TrendingUp, Info, CheckCircle2, XCircle, AlertTriangle, Calendar, Settings, BarChart3, BookOpen, FlaskConical, Target, LineChart, Grid3x3 } from "lucide-react";
 
 // // ===== Helpers: Normal CDF inverse (Acklam approximation) =====
 // function normSInv(p) {
@@ -1464,16 +1541,16 @@ export default function ExperimentationApp() {
 //   );
 // }
 
-// // ===== Sample Size Calculator Component =====
-// function SampleSizeCalculator() {
+// // ===== Sample Size Calculator (Single Scenario) =====
+// function SingleScenarioCalculator() {
 //   const [mode, setMode] = useState("two-prop");
 //   const [alpha, setAlpha] = useState(0.05);
 //   const [power, setPower] = useState(0.8);
 //   const [tails, setTails] = useState(2);
-//   const ratio = 1; // Always equal split
+//   const ratio = 1;
 //   const [baselineRate, setBaselineRate] = useState(0.05);
-//   const [effectType, setEffectType] = useState("relative"); // "relative" or "absolute"
-//   const [mdeValue, setMdeValue] = useState(0.05); // 5% relative or 0.05 absolute
+//   const [effectType, setEffectType] = useState("relative");
+//   const [mdeValue, setMdeValue] = useState(0.05);
 //   const [meanA, setMeanA] = useState(100);
 //   const [meanB, setMeanB] = useState(105);
 //   const [sdA, setSdA] = useState(15);
@@ -1483,9 +1560,6 @@ export default function ExperimentationApp() {
 //   const [dropoffRate, setDropoffRate] = useState(0);
 //   const [avgDailyTraffic, setAvgDailyTraffic] = useState(100000);
 
-//   const tests = useMemo(() => runTests(), []);
-
-//   // Calculate pA and pB from baseline and MDE
 //   const { pA, pB } = useMemo(() => {
 //     if (mode === "two-prop") {
 //       const pA = baselineRate;
@@ -1541,7 +1615,6 @@ export default function ExperimentationApp() {
 
 //   return (
 //     <div className="space-y-8">
-//       {/* SECTION 1: INPUT PARAMETERS */}
 //       <SectionDivider icon={Settings} title="Input Parameters" />
 
 //       <div className="grid grid-cols-2 gap-6">
@@ -1699,7 +1772,7 @@ export default function ExperimentationApp() {
 //                 <button
 //                   onClick={() => {
 //                     setEffectType("relative");
-//                     setMdeValue(0.05); // Default to 5% relative lift
+//                     setMdeValue(0.05);
 //                   }}
 //                   className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
 //                     effectType === "relative"
@@ -1712,7 +1785,7 @@ export default function ExperimentationApp() {
 //                 <button
 //                   onClick={() => {
 //                     setEffectType("absolute");
-//                     setMdeValue(0.005); // Default to 0.5 percentage points
+//                     setMdeValue(0.005);
 //                   }}
 //                   className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
 //                     effectType === "absolute"
@@ -1736,22 +1809,22 @@ export default function ExperimentationApp() {
 //               suffix="%"
 //               helpText={
 //                 effectType === "relative"
-//                   ? `Relative change from baseline (e.g., 20% means ${(baselineRate * 100).toFixed(1)}% → ${(baselineRate * (1 + mdeValue) * 100).toFixed(1)}%)`
-//                   : `Absolute change in percentage points (e.g., 2pp means ${(baselineRate * 100).toFixed(1)}% → ${((baselineRate + mdeValue) * 100).toFixed(1)}%)`
+//                   ? `Relative change from baseline (e.g., 5% means ${(baselineRate * 100).toFixed(1)}% → ${(baselineRate * (1 + mdeValue) * 100).toFixed(2)}%)`
+//                   : `Absolute change in percentage points (e.g., 0.5pp means ${(baselineRate * 100).toFixed(1)}% → ${((baselineRate + mdeValue) * 100).toFixed(2)}%)`
 //               }
 //             />
 
 //             <div className="mt-4 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border-2 border-indigo-200">
 //               <div className="grid grid-cols-3 gap-4 text-sm">
-//                 <div>
+//                 <div className="text-left">
 //                   <div className="text-gray-600 font-medium mb-1">Control Rate</div>
 //                   <div className="text-2xl font-bold text-gray-900">{(pA * 100).toFixed(2)}%</div>
 //                 </div>
-//                 <div>
+//                 <div className="text-center">
 //                   <div className="text-gray-600 font-medium mb-1">Variation Rate</div>
 //                   <div className="text-2xl font-bold text-indigo-700">{(pB * 100).toFixed(2)}%</div>
 //                 </div>
-//                 <div>
+//                 <div className="text-right">
 //                   <div className="text-gray-600 font-medium mb-1">Effect Size</div>
 //                   <div className="text-2xl font-bold text-purple-700">
 //                     {effectType === "relative" 
@@ -1962,18 +2035,429 @@ export default function ExperimentationApp() {
 //           {avgDailyTraffic === 0 && (
 //             <div className="bg-white/10 backdrop-blur rounded-xl p-4 border border-white/20">
 //               <p className="text-sm text-emerald-50">
-//                 Enter your average daily traffic in the "Traffic Settings" section to calculate test duration.
+//                 Enter your average daily traffic in the "Test Variations & Traffic" section to calculate test duration.
 //               </p>
 //             </div>
 //           )}
 //         </div>
 //       </div>
+//     </div>
+//   );
+// }
 
-//       {/* SECTION 3: REFERENCE & DOCUMENTATION */}
-//       <SectionDivider icon={BookOpen} title="Reference & Documentation" />
+// // ===== Multiple Scenarios Calculator =====
+// function MultipleScenarios() {
+//   const [mode, setMode] = useState("two-prop");
+//   const [alphaValues, setAlphaValues] = useState("0.01, 0.05, 0.10");
+//   const [power, setPower] = useState(0.8);
+//   const [tails, setTails] = useState(2);
+//   const ratio = 1;
+//   const [baselineRate, setBaselineRate] = useState(0.05);
+//   const [effectType, setEffectType] = useState("relative");
+//   const [mdeValues, setMdeValues] = useState("0.01, 0.03, 0.05, 0.08");
+//   const [meanA, setMeanA] = useState(100);
+//   const [meanB, setMeanB] = useState(105);
+//   const [sdA, setSdA] = useState(15);
+//   const [sdB, setSdB] = useState(15);
+//   const [numVariations, setNumVariations] = useState(2);
+//   const [useBonferroni, setUseBonferroni] = useState(true);
+//   const [dropoffRate, setDropoffRate] = useState(0);
+//   const [avgDailyTraffic, setAvgDailyTraffic] = useState(100000);
+
+//   const scenarios = useMemo(() => {
+//     const alphas = alphaValues.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v) && v > 0 && v < 1);
+//     const mdes = mdeValues.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v) && v > 0);
+    
+//     const results = [];
+    
+//     for (const alpha of alphas) {
+//       for (const mdeValue of mdes) {
+//         const alphaBonf = useBonferroni ? alpha / numVariations : alpha;
+        
+//         let pA, pB;
+//         if (mode === "two-prop") {
+//           if (effectType === "relative") {
+//             pA = baselineRate;
+//             pB = pA * (1 + mdeValue);
+//           } else {
+//             pA = baselineRate;
+//             pB = pA + mdeValue;
+//           }
+          
+//           const baseResult = nProportions({ pA, pB, alpha: alphaBonf, power, tails, ratio });
+//           const nControl = ceilPositive(baseResult.nA);
+//           const nPerVariation = ceilPositive(baseResult.nB);
+//           const subtotal = nControl + nPerVariation * numVariations;
+          
+//           const nControlWithDropoff = dropoffRate > 0 ? ceilPositive(nControl / (1 - dropoffRate)) : nControl;
+//           const nPerVariationWithDropoff = dropoffRate > 0 ? ceilPositive(nPerVariation / (1 - dropoffRate)) : nPerVariation;
+//           const totalWithDropoff = nControlWithDropoff + nPerVariationWithDropoff * numVariations;
+          
+//           const finalTotal = dropoffRate > 0 ? totalWithDropoff : subtotal;
+//           const daysNeeded = avgDailyTraffic > 0 ? finalTotal / avgDailyTraffic : 0;
+          
+//           results.push({
+//             alpha: alpha * 100,
+//             mde: mdeValue * 100,
+//             controlRate: pA * 100,
+//             variationRate: pB * 100,
+//             nControl: dropoffRate > 0 ? nControlWithDropoff : nControl,
+//             nPerVariation: dropoffRate > 0 ? nPerVariationWithDropoff : nPerVariation,
+//             totalSample: finalTotal,
+//             daysNeeded: Math.ceil(daysNeeded),
+//             weeksNeeded: (daysNeeded / 7).toFixed(1)
+//           });
+//         }
+//       }
+//     }
+    
+//     return results;
+//   }, [alphaValues, mdeValues, mode, power, tails, baselineRate, effectType, numVariations, useBonferroni, dropoffRate, avgDailyTraffic]);
+
+//   return (
+//     <div className="space-y-8">
+//       <SectionDivider icon={Settings} title="Input Parameters" />
+
+//       <div className="grid grid-cols-2 gap-6">
+//         {/* Test Configuration Card */}
+//         <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
+//           <h3 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+//             <div className="p-2 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg">
+//               <Target size={20} className="text-indigo-600" />
+//             </div>
+//             Test Configuration
+//           </h3>
+//           <div className="space-y-4">
+//             <div>
+//               <label className="text-sm font-semibold text-gray-700 mb-3 block">Metric Type</label>
+//               <div className="space-y-2">
+//                 <button
+//                   onClick={() => setMode("two-prop")}
+//                   className={`w-full px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+//                     mode === "two-prop"
+//                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+//                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+//                   }`}
+//                 >
+//                   Proportions (Conversion Rate)
+//                 </button>
+//                 <button
+//                   onClick={() => setMode("two-means")}
+//                   className={`w-full px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+//                     mode === "two-means"
+//                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+//                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+//                   }`}
+//                 >
+//                   Means (Average Value)
+//                 </button>
+//               </div>
+//             </div>
+
+//             <div>
+//               <label className="text-sm font-semibold text-gray-700 mb-3 block">Test Type</label>
+//               <div className="space-y-2">
+//                 <button
+//                   onClick={() => setTails(2)}
+//                   className={`w-full px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+//                     tails === 2
+//                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+//                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+//                   }`}
+//                 >
+//                   Two-tailed (detects ↑ or ↓)
+//                 </button>
+//                 <button
+//                   onClick={() => setTails(1)}
+//                   className={`w-full px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+//                     tails === 1
+//                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+//                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+//                   }`}
+//                 >
+//                   One-tailed (detects ↑ only)
+//                 </button>
+//               </div>
+//               <p className="text-xs text-gray-500 mt-2">Use two-tailed unless you have strong directional hypothesis</p>
+//             </div>
+//           </div>
+//         </div>
+
+//         {/* Statistical Parameters Card */}
+//         <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
+//           <h3 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+//             <div className="p-2 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg">
+//               <BarChart3 size={20} className="text-indigo-600" />
+//             </div>
+//             Statistical Parameters
+//           </h3>
+//           <div className="space-y-4">
+//             <label className="flex flex-col gap-2">
+//               <span className="text-sm font-semibold text-gray-700">Significance Levels (α) - comma separated</span>
+//               <input
+//                 type="text"
+//                 className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all"
+//                 value={alphaValues}
+//                 onChange={(e) => setAlphaValues(e.target.value)}
+//                 placeholder="0.01, 0.05, 0.10"
+//               />
+//               <span className="text-xs text-gray-500">Enter multiple values (e.g., "0.01, 0.05, 0.10" for 1%, 5%, 10%)</span>
+//             </label>
+
+//             <NumberInput
+//               label="Statistical Power (1-β)"
+//               value={power}
+//               onChange={setPower}
+//               step={0.05}
+//               min={0.5}
+//               max={0.99}
+//               isPercentage={true}
+//               suffix="%"
+//               helpText="Probability of detecting a true effect. Common: 80%"
+//             />
+//             <label className="flex flex-col gap-2">
+//               <span className="text-sm font-semibold text-gray-700">Bonferroni Correction</span>
+//               <div className="flex items-center gap-3">
+//                 <button
+//                   onClick={() => setUseBonferroni(!useBonferroni)}
+//                   className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+//                     useBonferroni ? "bg-gradient-to-r from-indigo-600 to-purple-600" : "bg-gray-300"
+//                   }`}
+//                 >
+//                   <span
+//                     className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+//                       useBonferroni ? "translate-x-6" : "translate-x-1"
+//                     }`}
+//                   />
+//                 </button>
+//                 <span className="text-sm text-gray-700 font-medium">
+//                   {useBonferroni ? "Enabled" : "Disabled"}
+//                 </span>
+//               </div>
+//               <span className="text-xs text-gray-500">
+//                 {useBonferroni 
+//                   ? "Adjusts α for multiple comparisons to control family-wise error rate"
+//                   : "No adjustment for multiple variations (increases Type I error risk)"
+//                 }
+//               </span>
+//             </label>
+//           </div>
+//         </div>
+//       </div>
+
+//       {/* Metric Values Card */}
+//       <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
+//         <h3 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+//           <div className="p-2 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg">
+//             <TrendingUp size={20} className="text-indigo-600" />
+//           </div>
+//           {mode === "two-prop" ? "Conversion Rate Configuration" : "Mean Values Configuration"}
+//         </h3>
+        
+//         {mode === "two-prop" ? (
+//           <div className="space-y-4">
+//             <NumberInput
+//               label="Baseline Rate (Control)"
+//               value={baselineRate}
+//               onChange={setBaselineRate}
+//               step={0.01}
+//               min={0.01}
+//               max={0.99}
+//               isPercentage={true}
+//               suffix="%"
+//               helpText="Current conversion rate in control group"
+//             />
+            
+//             <div>
+//               <label className="text-sm font-semibold text-gray-700 mb-3 block">Effect Type</label>
+//               <div className="grid grid-cols-2 gap-3">
+//                 <button
+//                   onClick={() => {
+//                     setEffectType("relative");
+//                     setMdeValues("0.01, 0.03, 0.05, 0.08");
+//                   }}
+//                   className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+//                     effectType === "relative"
+//                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+//                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+//                   }`}
+//                 >
+//                   Relative Lift
+//                 </button>
+//                 <button
+//                   onClick={() => {
+//                     setEffectType("absolute");
+//                     setMdeValues("0.005, 0.01, 0.015, 0.02");
+//                   }}
+//                   className={`px-4 py-3 rounded-xl font-medium text-sm transition-all ${
+//                     effectType === "absolute"
+//                       ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+//                       : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+//                   }`}
+//                 >
+//                   Absolute Lift
+//                 </button>
+//               </div>
+//             </div>
+
+//             <label className="flex flex-col gap-2">
+//               <span className="text-sm font-semibold text-gray-700">
+//                 {effectType === "relative" ? "Minimum Detectable Effects (Relative) - comma separated" : "Minimum Detectable Effects (Absolute) - comma separated"}
+//               </span>
+//               <input
+//                 type="text"
+//                 className="w-full rounded-xl border-2 border-gray-200 bg-white px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none transition-all"
+//                 value={mdeValues}
+//                 onChange={(e) => setMdeValues(e.target.value)}
+//                 placeholder={effectType === "relative" ? "0.01, 0.03, 0.05, 0.08" : "0.005, 0.01, 0.015, 0.02"}
+//               />
+//               <span className="text-xs text-gray-500">
+//                 {effectType === "relative"
+//                   ? "Enter multiple relative lift values (e.g., \"0.01, 0.03, 0.05\" for 1%, 3%, 5% lifts)"
+//                   : "Enter multiple absolute lift values in decimal (e.g., \"0.005, 0.01\" for 0.5pp, 1pp lifts)"
+//                 }
+//               </span>
+//             </label>
+//           </div>
+//         ) : (
+//           <div className="space-y-4">
+//             <div className="grid grid-cols-2 gap-6">
+//               <NumberInput
+//                 label="Control Mean"
+//                 value={meanA}
+//                 onChange={setMeanA}
+//                 step={1}
+//                 helpText="Average value in control group"
+//               />
+//               <NumberInput
+//                 label="Variation Mean"
+//                 value={meanB}
+//                 onChange={setMeanB}
+//                 step={1}
+//                 helpText="Expected average in variation"
+//               />
+//             </div>
+//             <div className="grid grid-cols-2 gap-6">
+//               <NumberInput
+//                 label="Control Std Dev (σ)"
+//                 value={sdA}
+//                 onChange={setSdA}
+//                 step={1}
+//                 min={0.1}
+//                 helpText="Standard deviation in control"
+//               />
+//               <NumberInput
+//                 label="Variation Std Dev (σ)"
+//                 value={sdB}
+//                 onChange={setSdB}
+//                 step={1}
+//                 min={0.1}
+//                 helpText="Standard deviation in variation"
+//               />
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       {/* Test Variations & Traffic Settings Card */}
+//       <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
+//         <h3 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+//           <div className="p-2 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-lg">
+//             <Users size={20} className="text-indigo-600" />
+//           </div>
+//           Test Variations & Traffic
+//         </h3>
+//         <div className="grid grid-cols-3 gap-6">
+//           <NumberInput
+//             label="Number of Variations"
+//             value={numVariations}
+//             onChange={setNumVariations}
+//             step={1}
+//             min={1}
+//             max={10}
+//             helpText={`Testing ${numVariations} variation${numVariations > 1 ? 's' : ''} against control${useBonferroni && numVariations > 1 ? ' (Bonferroni corrected)' : ''}`}
+//           />
+//           <NumberInput
+//             label="Average Daily Traffic"
+//             value={avgDailyTraffic}
+//             onChange={setAvgDailyTraffic}
+//             step={100}
+//             min={0}
+//             helpText="Average number of users per day"
+//           />
+//           <NumberInput
+//             label="Expected Drop-off Rate"
+//             value={dropoffRate}
+//             onChange={setDropoffRate}
+//             step={0.01}
+//             min={0}
+//             max={0.5}
+//             isPercentage={true}
+//             suffix="%"
+//             helpText="Users who drop out before test completion"
+//           />
+//         </div>
+//       </div>
+
+//       {/* Results Table */}
+//       <SectionDivider icon={BarChart3} title={`Scenario Results (${scenarios.length} scenarios)`} />
+
+//       <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-200">
+//         <div className="overflow-x-auto">
+//           <table className="w-full">
+//             <thead className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+//               <tr>
+//                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">α (%)</th>
+//                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">MDE (%)</th>
+//                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">Control</th>
+//                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide">Variation</th>
+//                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">n (Control)</th>
+//                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">n (per Var)</th>
+//                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">Total Sample</th>
+//                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">Days</th>
+//                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide">Weeks</th>
+//               </tr>
+//             </thead>
+//             <tbody className="divide-y divide-gray-200">
+//               {scenarios.map((scenario, idx) => (
+//                 <tr key={idx} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+//                   <td className="px-4 py-3 text-sm font-medium text-gray-900">{scenario.alpha.toFixed(1)}%</td>
+//                   <td className="px-4 py-3 text-sm font-medium text-indigo-700">{scenario.mde.toFixed(1)}%</td>
+//                   <td className="px-4 py-3 text-sm text-gray-700">{scenario.controlRate.toFixed(2)}%</td>
+//                   <td className="px-4 py-3 text-sm text-gray-700">{scenario.variationRate.toFixed(2)}%</td>
+//                   <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.nControl.toLocaleString()}</td>
+//                   <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.nPerVariation.toLocaleString()}</td>
+//                   <td className="px-4 py-3 text-sm text-right font-semibold text-indigo-700">{scenario.totalSample.toLocaleString()}</td>
+//                   <td className="px-4 py-3 text-sm text-right text-gray-900">{scenario.daysNeeded}</td>
+//                   <td className="px-4 py-3 text-sm text-right text-gray-700">{scenario.weeksNeeded}</td>
+//                 </tr>
+//               ))}
+//             </tbody>
+//           </table>
+//         </div>
+//       </div>
+
+//       {scenarios.length === 0 && (
+//         <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+//           <p className="text-sm text-yellow-800">
+//             No valid scenarios generated. Please check your input values.
+//           </p>
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
+// // ===== Documentation Component =====
+// function Documentation() {
+//   const tests = useMemo(() => runTests(), []);
+
+//   return (
+//     <div className="space-y-8">
+//       <SectionDivider icon={BookOpen} title="Documentation & Reference" />
 
 //       {/* Validation Tests */}
-//       <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200 mb-6">
+//       <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-200">
 //         <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
 //           <div className="p-2 bg-emerald-100 rounded-lg">
 //             <CheckCircle2 size={18} className="text-emerald-600" />
@@ -2036,6 +2520,51 @@ export default function ExperimentationApp() {
 //   );
 // }
 
+// // ===== Sample Size Tab with Nested Tabs =====
+// function SampleSizeTab() {
+//   const [activeSubTab, setActiveSubTab] = useState("single");
+
+//   const subTabs = [
+//     { id: "single", label: "Sample Size Calculator", icon: Calculator },
+//     { id: "multiple", label: "Multiple Scenarios", icon: Grid3x3 },
+//     { id: "docs", label: "Documentation", icon: BookOpen },
+//   ];
+
+//   return (
+//     <div>
+//       {/* Sub-tab Navigation */}
+//       <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-gray-200 mb-6 -mt-2">
+//         <div className="flex gap-1 px-2 pt-2">
+//           {subTabs.map((tab) => {
+//             const Icon = tab.icon;
+//             return (
+//               <button
+//                 key={tab.id}
+//                 onClick={() => setActiveSubTab(tab.id)}
+//                 className={`flex items-center gap-2 px-4 py-2.5 font-medium text-sm transition-all rounded-t-xl ${
+//                   activeSubTab === tab.id
+//                     ? "bg-white text-indigo-700 shadow-sm border-t-2 border-x-2 border-indigo-500"
+//                     : "text-gray-600 hover:text-gray-900 hover:bg-white/50"
+//                 }`}
+//               >
+//                 <Icon size={16} />
+//                 {tab.label}
+//               </button>
+//             );
+//           })}
+//         </div>
+//       </div>
+
+//       {/* Sub-tab Content */}
+//       <div>
+//         {activeSubTab === "single" && <SingleScenarioCalculator />}
+//         {activeSubTab === "multiple" && <MultipleScenarios />}
+//         {activeSubTab === "docs" && <Documentation />}
+//       </div>
+//     </div>
+//   );
+// }
+
 // // ===== Placeholder Components for Future Tabs =====
 // function PlaceholderTab({ title, description, icon: Icon }) {
 //   return (
@@ -2059,7 +2588,7 @@ export default function ExperimentationApp() {
 //   const [activeTab, setActiveTab] = useState("sample-size");
 
 //   const tabs = [
-//     { id: "sample-size", label: "Sample Size Calculator", icon: Calculator },
+//     { id: "sample-size", label: "Sample Size", icon: Calculator },
 //     { id: "analysis", label: "Results Analysis", icon: LineChart },
 //     { id: "monitoring", label: "Test Monitoring", icon: BarChart3 },
 //     { id: "repository", label: "Test Repository", icon: BookOpen },
@@ -2116,7 +2645,7 @@ export default function ExperimentationApp() {
 
 //       {/* Tab Content */}
 //       <div className="max-w-7xl mx-auto px-8 py-8">
-//         {activeTab === "sample-size" && <SampleSizeCalculator />}
+//         {activeTab === "sample-size" && <SampleSizeTab />}
 //         {activeTab === "analysis" && (
 //           <PlaceholderTab
 //             title="Results Analysis"
